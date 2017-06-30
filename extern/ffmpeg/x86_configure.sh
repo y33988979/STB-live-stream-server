@@ -1,0 +1,40 @@
+./configure \
+    --target-os=linux \
+    --prefix=`pwd`/_x86_install \
+    --enable-shared \
+    --enable-gpl \
+    --enable-libx264 \
+    --disable-yasm \
+    --disable-encoders \
+    --enable-encoder=libx264 \
+    --enable-encoder=aac \
+    --enable-decoder=h264 \
+    --enable-decoder=aac \
+    --enable-decoder=mpeg2video \
+    --disable-muxers \
+    --enable-muxer=mpegts \
+    --disable-bsfs \
+    --disable-filters \
+    --disable-devices \
+    --disable-avdevice \
+    --disable-hwaccels \
+    --disable-demuxers \
+    --enable-demuxer=aac \
+    --enable-demuxer=h264 \
+    --enable-demuxer=hls \
+    --enable-demuxer=mpegts \
+    --disable-protocols \
+    --enable-protocol=file \
+    --enable-protocol=rtmp \
+    --enable-protocol=hls \
+    --disable-parsers \
+    --enable-parser=aac \
+    --enable-parser=h264 \
+    --disable-xlib \
+    --disable-ffmpeg \
+    --disable-ffserver \
+    --disable-ffplay \
+    --disable-ffprobe
+
+    #--enable-small \
+    #--enable-memalign-hack \
