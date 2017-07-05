@@ -25,6 +25,7 @@ PMT_COMPACT_TBL    *g_pProgTbl = HI_NULL;
 
 #include <errno.h>
 #define TS_PKT_SIZE     188
+#define HLS_SPLIT_TS
 #define REMOVE_INVALID_TSPKT
 typedef struct _TS_Packet
 {
@@ -33,7 +34,7 @@ typedef struct _TS_Packet
     HI_U32     valid_count;
     HI_U32     valid_size;
     HI_U8     *ts_data[512];
-    
+
 }TS_List_t;
 
 struct options_t {
@@ -45,18 +46,20 @@ struct options_t {
     const char *url_prefix;
     long num_segments;
     int playlist_num;
+    int tsfile_cache_num;
 };
 
-struct options_t g_options = 
+struct options_t g_options =
 {
     "NULL",  /* input_file */
-    10,    /* segment_duration */
+    5,    /* segment_duration */
     "ts", /* output_prefix */
     "/tmp/hls/1.m3u8", /* m3u8_file */
     "/tmp/hls/tmp.m3u8", /* tmp_m3u8_file */
     "", /* url_prefix */
     2,  /* num_segments */
-    3   /* playlist_num */
+    3,  /* playlist_num */
+    6   /* tsfile_cache_num */
 };
 
 TS_List_t g_ts_pkt_list;
@@ -112,10 +115,10 @@ int write_index_file(const struct options_t *options, const HI_U32 first_segment
     }
 
     if (options->num_segments) {
-        snprintf(write_buf, 1024, "#EXTM3U\n#EXT-X-TARGETDURATION:%lu\n#EXT-X-MEDIA-SEQUENCE:%u\n", options->segment_duration, first_segment);
+        snprintf(write_buf, 1024, "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%lu\n#EXT-X-MEDIA-SEQUENCE:%u\n", 15, first_segment);
     }
     else {
-        snprintf(write_buf, 1024, "#EXTM3U\n#EXT-X-TARGETDURATION:%lu\n", options->segment_duration);
+        snprintf(write_buf, 1024, "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%lu\n", options->segment_duration);
     }
     if (fwrite(write_buf, strlen(write_buf), 1, index_fp) != 1) {
         fprintf(stderr, "Could not write to m3u8 index file, will not continue writing to index file\n");
@@ -147,6 +150,42 @@ int write_index_file(const struct options_t *options, const HI_U32 first_segment
     return rename(options->tmp_m3u8_file, options->m3u8_file);
 }
 
+TS_List_t* GetAllValidTsPkt(HI_U8 *data, HI_U32 datalen)
+{
+    HI_S32 i, j;
+    HI_S32 pid;
+    HI_U8 *pdata;
+    
+    TS_List_t *ts_pkt_list = &g_ts_pkt_list;
+    
+    /* data filter , remove ts packet which pid is 0x1FFF */
+    memset(ts_pkt_list, 0, sizeof(TS_List_t));
+
+    if(datalen%TS_PKT_SIZE != 0)
+    {
+        printf("[%s] HI_UNF_DMX_AcquireRecData datalen=%d is not multiple of 188.\n", __FUNCTION__, datalen);
+        return NULL;
+    }
+
+    j = 0;
+    ts_pkt_list->valid_count = 0;
+    ts_pkt_list->total_count = datalen/TS_PKT_SIZE;
+    for(i=0; i<ts_pkt_list->total_count; i++){
+        pdata = data + i*TS_PKT_SIZE;
+        pid = pdata[1]<<8 | pdata[2];
+        //printf("pid=0x%x\n", pid);
+        if(pid != INVALID_PID){
+            ts_pkt_list->ts_data[j++] = pdata;
+            ts_pkt_list->valid_count++;
+        }
+    }
+
+    ts_pkt_list->total_size = datalen;
+    ts_pkt_list->valid_size = ts_pkt_list->valid_count*TS_PKT_SIZE;
+
+    return ts_pkt_list;
+}
+
 HI_VOID* SaveRecDataThread(HI_VOID *arg)
 {
     HI_S32      ret;
@@ -166,7 +205,7 @@ HI_VOID* SaveRecDataThread(HI_VOID *arg)
 
     output_index = 1;
     sprintf(ts_filename, "/tmp/hls/%s-%u.ts", options->output_prefix, output_index++);
-    
+
     RecFile = fopen(ts_filename, "w");
     if (!RecFile)
     {
@@ -206,29 +245,14 @@ HI_VOID* SaveRecDataThread(HI_VOID *arg)
             break;
         }
 
+        #ifdef HLS_SPLIT_TS
         #ifdef REMOVE_INVALID_TSPKT
+
         /* data filter , remove ts packet which pid is 0x1FFF */
-        memset(ts_pkt_list, 0, sizeof(TS_List_t));
-
-        if(RecData.u32Len%TS_PKT_SIZE != 0)
-            printf("[%s] HI_UNF_DMX_AcquireRecData datalen=%d is not multiple of 188.\n", __FUNCTION__, RecData.u32Len);
-        ts_pkt_list->total_count = RecData.u32Len/TS_PKT_SIZE;
-
-        j = 0;
-        ts_pkt_list->valid_count = 0;
-        for(i=0; i<ts_pkt_list->total_count; i++){
-            pdata = RecData.pDataAddr + i*TS_PKT_SIZE;
-            pid = pdata[1]<<8 | pdata[2];
-            //printf("pid=0x%x\n", pid);
-            if(pid != INVALID_PID){
-                ts_pkt_list->ts_data[j++] = pdata;
-                ts_pkt_list->valid_count++;
-            }
-        }
-
-        ts_pkt_list->total_size = RecData.u32Len;
-        ts_pkt_list->valid_size = ts_pkt_list->valid_count*TS_PKT_SIZE;
-
+        ts_pkt_list = GetAllValidTsPkt(RecData.pDataAddr, RecData.u32Len);
+        if(!ts_pkt_list)
+            continue;
+        
         for(i=0; i<ts_pkt_list->valid_count; i++){
             if (TS_PKT_SIZE != fwrite(ts_pkt_list->ts_data[i], 1, TS_PKT_SIZE, RecFile))
             {
@@ -236,16 +260,34 @@ HI_VOID* SaveRecDataThread(HI_VOID *arg)
                 break;
             }
         }
-
         file_size += ts_pkt_list->valid_size;
+        
+        #else//REMOVE_INVALID_TSPKT
+        
+        if (RecData.u32Len != fwrite(RecData.pDataAddr, 1, RecData.u32Len, RecFile))
+        {
+            perror("[SaveRecDataThread] fwrite error");
+
+            break;
+        }
+        file_size += RecData.u32Len;
+        #endif 
+
+        /* Create new file */
         if(file_size >= 0x300000) {
 
             fclose(RecFile);
             file_size = 0;
             file_cnt++;
+            
             if(file_cnt >= options->playlist_num)
                 write_index_file(options, first_segment++, last_segment++, 0);
-            
+            if(file_cnt >= options->tsfile_cache_num)
+            {
+                sprintf(ts_filename, "/tmp/hls/%s-%u.ts", options->output_prefix, output_index-options->tsfile_cache_num-1);
+                unlink(ts_filename);
+            }
+
             sprintf(ts_filename, "/tmp/hls/%s-%u.ts", options->output_prefix, output_index++);
             RecFile = fopen(ts_filename, "w");
             if (!RecFile)
@@ -256,18 +298,20 @@ HI_VOID* SaveRecDataThread(HI_VOID *arg)
             }
             printf("[%s] open file %s\n", __FUNCTION__, ts_filename);
         }
-        #else
+
+        //printf("save data: total_len=%d, valid_len=%d\n", \
+        //ts_pkt_list->total_count*TS_PKT_SIZE, ts_pkt_list->valid_count*TS_PKT_SIZE);
+        
+        #else //HLS_SPLIT_TS
+
         if (RecData.u32Len != fwrite(RecData.pDataAddr, 1, RecData.u32Len, RecFile))
         {
             perror("[SaveRecDataThread] fwrite error");
 
             break;
         }
-        #endif //TS_PACKET_FILTER
-        
-        //printf("save data: total_len=%d, valid_len=%d\n", \
-        //ts_pkt_list->total_count*TS_PKT_SIZE, ts_pkt_list->valid_count*TS_PKT_SIZE);
-        
+        #endif //HLS_SPLIT_TS
+
         #ifndef USE_ORIGINAL_SCD
         ret = HI_UNF_DMX_ReleaseRecData(Ts->RecHandle, &RecData);
         #else
@@ -579,7 +623,7 @@ HI_S32 main(HI_S32 argc, HI_CHAR *argv[])
     {
         ThridParam = strtol(argv[4], NULL, 0);
     }
-    
+
 
 	HI_SYS_Init();
 
