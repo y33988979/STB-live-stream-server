@@ -11,13 +11,16 @@
 
 include $(MAKE_DIR)/rule.mk
 
+ifeq ($(HISI_ENV),)
+$(error "Please run 'source ./env.sh' before building!")
+endif
 
 #==============OUT TARTGET DEFINE==============================================================
 TARGET = nginx 
 
 #==============MAKE COMMAND====================================================================
 
-all: prepare extern
+all: prepare extern nginx
 	echo "make done!"
 
 test: $(LIB_TARGET)
@@ -32,17 +35,32 @@ extern:
 extern_clean:
 	make -C extern clean
 
+#====================================================
+#        web server (nginx)
+#====================================================
+.PHONY: nginx nginx_clean
+nginx:
+	make -C webserver/nginx all
+nginx_clean:
+	make -C webserver/nginx clean
+
+$(BIN_TARGET): 
+
+.PHONY: prepare install 
 prepare:
 	$(AT)-mkdir -p $(INSTALL_INC_PATH)
 	$(AT)-mkdir -p $(INSTALL_LIB_PATH)
-
-$(BIN_TARGET): 
 
 install: $(LIB_TARGET) 
 	$(AT)-cp $(TOP_DIR)/test $(INSTALL_PATH)
 	$(AT)-cp $(SRC_DIR)/libcas.a $(INSTALL_LIB_PATH)
 	$(AT)-cp $(SRC_DIR)/*.h $(INSTALL_INC_PATH)
 
-clean: extern_clean
+.PHONY: clean distclean
+clean: extern_clean nginx_clean
+
+distclean: clean
 	$(AT)-rm $(INSTALL_INC_PATH)/* -rfv
 	$(AT)-rm $(INSTALL_LIB_PATH)/* -rfv
+	-rm $(INSTALL_PATH)/* -rf
+

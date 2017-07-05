@@ -3,7 +3,7 @@
 #
 
 ## step1: set environment 
-source env.sh
+source ./env.sh
 
 ## step2: compile ffmpeg/libx264/nginx, etc.
 make all
