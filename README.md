@@ -28,44 +28,43 @@ make install
 ### nginx config for hls/rtmp 
 in nginx.conf
 
-#user  nobody;
-##nginx多进程worker模式;
-worker_processes  2; 
+#user  nobody;  
+##nginx多进程worker模式;  
+worker_processes  2;   
 
-##nginx log记录;
-#error_log  logs/error.log;
-#error_log  logs/error.log  notice;
-#error_log  logs/error.log  info;
+##nginx log记录;  
+#error_log  logs/error.log;  
+#error_log  logs/error.log  notice;  
+#error_log  logs/error.log  info;  
 
-#pid        logs/nginx.pid;
+#pid        logs/nginx.pid;  
 
-
-events {
-    worker_connections  1024;
-}
-
-#rtmp配置，nginx必须要添加nginx-rtmp-module模块才能支持;
-rtmp {
-    server {
-        listen 1935;
-        chunk_size 4000;
-        #直播流配置;
-        application app {
-            ## enable live streaming
-            live on;
-        }
-        #hls切片, 视频目录, m3u8索引, 播放控制等配置  ;
-        application hls {
-            live on;
-            hls on;
-            hls_path /tmp/hls;
-            hls_fragment 4s;
-            hls_playlist_length 8s;
-        }
-    }
-}
-
-#web 模块;
+events {  
+    worker_connections  1024;  
+}  
+  
+#rtmp配置，nginx必须要添加nginx-rtmp-module模块才能支持;  
+rtmp {  
+    server {  
+        listen 1935;  
+        chunk_size 4000;  
+        #直播流配置;  
+        application app {  
+            ## enable live streaming  
+            live on;  
+        }  
+        #hls切片, 视频目录, m3u8索引, 播放控制等配置  ;  
+        application hls {  
+            live on;  
+            hls on;  
+            hls_path /tmp/hls;  
+            hls_fragment 4s;  
+            hls_playlist_length 8s;  
+        }  
+    }  
+}  
+  
+#web 模块; 
 http {
     include       mime.types;
     default_type  application/octet-stream;
